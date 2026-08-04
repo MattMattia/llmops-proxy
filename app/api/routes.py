@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from app.services.llm_client import generate_response
 from app.guardrails.prompt_check import is_safe_prompt
+from app.guardrails.pii_filter import mask_sensitive_data  # <-- Nueva importación
 import logging
 
 router = APIRouter()
@@ -12,22 +13,28 @@ class PromptRequest(BaseModel):
 
 @router.post("/chat")
 async def chat_with_llm(request: PromptRequest):
-    # 1. Pasamos el prompt por la barrera de seguridad
+    # 1. Verificamos que no sea un ataque de inyección
     is_safe, reason = is_safe_prompt(request.prompt)
-    
-    # 2. Si detecta peligro, cortamos la conexión inmediatamente
     if not is_safe:
-        logger.warning(f"🚨 [ALERTA DE SEGURIDAD] Intento de inyección bloqueado. Razón: {reason}")
+        logger.warning(f"🚨 [ALERTA] Intento de inyección bloqueado: {reason}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El mensaje contiene instrucciones no permitidas por las políticas de seguridad."
+            detail="Mensaje bloqueado por políticas de seguridad."
         )
 
-    # 3. Si el mensaje es limpio, le permitimos llegar a la IA local
-    ai_response = await generate_response(request.prompt)
+    # 2. Censuramos datos sensibles (PII)
+    cleaned_prompt = mask_sensitive_data(request.prompt)
+    
+    # Opcional: logueamos si el prompt fue modificado
+    if cleaned_prompt != request.prompt:
+        logger.info("🛡️ [DLP] Datos sensibles detectados y censurados.")
+
+    # 3. Enviamos el prompt LIMPIO a la IA
+    ai_response = await generate_response(cleaned_prompt)
     
     return {
         "status": "success",
-        "original_prompt": request.prompt,
+        "original_prompt": request.prompt,      # Lo que mandó el usuario
+        "clean_prompt": cleaned_prompt,         # Lo que realmente vio la IA
         "response": ai_response
     }
