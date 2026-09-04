@@ -1,18 +1,17 @@
 @echo off
-title LLMOps Proxy - Inicio de Servicios
+title LLMOps Proxy - Inicio Silencioso
 cd /d "%~dp0"
 
-echo Iniciando servicio de Ollama...
-start "Ollama" cmd /k "ollama serve"
+:: 1. Iniciar Ollama en segundo plano oculto
+start /b ollama serve >nul 2>&1
 
-echo Iniciando backend FastAPI...
-start "FastAPI" cmd /k "call .venv\Scripts\activate.bat && uvicorn app.main:app --reload"
+:: 2. Iniciar FastAPI en segundo plano oculto
+start /b cmd /c "call .venv\Scripts\activate.bat && uvicorn app.main:app --reload >nul 2>&1"
 
-echo Esperando 5 segundos...
+:: 3. Esperar 5 segundos a que carguen los servicios
 timeout /t 5 /nobreak >nul
 
-echo Iniciando Streamlit...
-start "Streamlit" cmd /k "call .venv\Scripts\activate.bat && streamlit run app_ui.py"
+:: 4. Iniciar Streamlit (este abre el navegador automáticamente sin consola intrusiva)
+start /b cmd /c "call .venv\Scripts\activate.bat && streamlit run app_ui.py"
 
-echo Todos los servicios iniciados.
-pause
+exit
